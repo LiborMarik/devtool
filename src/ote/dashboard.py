@@ -18,6 +18,7 @@ from ote.db import (
     get_prices_for_date,
 )
 from ote.price_model import Evaluation
+from ote.tariff import DISTRIBUTOR, LOCATION_NAME, SELL_FEE, SUPPLIER
 from ote.spot import (
     SpotPrice,
     fetch_spot_prices,
@@ -303,7 +304,7 @@ PAGES = [
     ("show_prices_tab", "Aktuální ceny", ":material/bolt:", "ceny",
      "Spotové ceny OTE po 15 minutách"),
     ("show_my_price_tab", "Moje cena", ":material/home:", "moje-cena",
-     "Koncová cena podle tarifu Electree + ČEZ D25d"),
+     f"Koncová cena podle tarifu {SUPPLIER} + {DISTRIBUTOR}"),
     ("show_trend_tab", "Vývoj cen", ":material/show_chart:", "vyvoj",
      "Měsíční průměry spotu"),
     ("show_analysis_tab", "Analýza", ":material/insights:", "analyza",
@@ -313,7 +314,7 @@ PAGES = [
     ("show_forecast_tab", "Predikce", ":material/auto_awesome:", "predikce",
      "Dnes + 6 dní modelem s počasím a jeho přesnost"),
     ("show_weather_tab", "Počasí", ":material/partly_cloudy_day:", "pocasi",
-     "Předpověď pro Kravaře a vliv na ceny"),
+     f"Předpověď pro {LOCATION_NAME} a vliv na ceny"),
 ]
 
 LOGO_SVG = f"""<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 48'>
@@ -324,7 +325,7 @@ LOGO_SVG = f"""<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 48'>
 <text x='50' y='24' fill='#eef2f8' font-family='Poppins,Segoe UI,sans-serif' font-size='18'
  font-weight='600'>Spot Home</text>
 <text x='50' y='40' fill='{INK_MUTED}' font-family='Poppins,Segoe UI,sans-serif'
- font-size='10.5'>Ceny elektřiny OTE · Kravaře</text></svg>"""
+ font-size='10.5'>Ceny elektřiny OTE · {LOCATION_NAME}</text></svg>"""
 
 
 def main() -> None:
@@ -360,11 +361,11 @@ def next_tariff_change(now: datetime) -> datetime:
     """Čas nejbližší změny NT ↔ VT."""
     from ote.tariff import is_low_tariff
 
-    low = is_low_tariff(now.hour)
-    t = now.replace(minute=0, second=0, microsecond=0)
-    for _ in range(48):
-        t += timedelta(hours=1)
-        if is_low_tariff(t.hour) != low:
+    low = is_low_tariff(now.hour, now.minute)
+    t = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0)
+    for _ in range(4 * 48):
+        t += timedelta(minutes=15)
+        if is_low_tariff(t.hour, t.minute) != low:
             return t
     return t
 
@@ -481,7 +482,7 @@ def price_flow_html(spot_kwh: float, low: bool, now: datetime) -> str:
       <div class='pf-hub'>{icon_img('home', ACCENT_INK, 22)}<b>{total:.2f}</b>
         <span>Kč/kWh teď</span><span class='pf-t'>{'NÍZKÝ' if low else 'VYSOKÝ'} TARIF</span></div>
       <div class='pf-flow pf-left pf-c4' style='--c:{HOME};--delay:.8s'></div>
-      {node('pf-right', HOME, 'coins', fees, 'Poplatky a daň', 'Electree + služby')}
+      {node('pf-right', HOME, 'coins', fees, 'Poplatky a daň', f'{SUPPLIER} + služby')}
       <div class='pf-flow pf-up pf-c2' style='--c:{ACCENT_INK};--delay:1.2s'></div>
       {node('pf-bottom', ACCENT_INK, 'pole', spot_vat + distribution, 'Energie + síť',
             'bez poplatků')}
@@ -523,10 +524,10 @@ def show_overview_page() -> None:
 
     left, right = st.columns([1, 1.15], gap="medium")
     with left:
-        with card("Složení ceny teď", "Spot, distribuce a poplatky · Electree + ČEZ D25d",
+        with card("Složení ceny teď", f"Spot, distribuce a poplatky · {SUPPLIER} + {DISTRIBUTOR}",
                   icon="activity", tone="accent"):
             if current is not None:
-                st.html(price_flow_html(current.price_czk / 1000, is_low_tariff(now.hour), now))
+                st.html(price_flow_html(current.price_czk / 1000, is_low_tariff(now.hour, now.minute), now))
                 slot = (f"{current.time_from:%H:%M}–"
                         f"{current.time_from + timedelta(minutes=15):%H:%M}")
                 st.html(
@@ -560,8 +561,9 @@ def show_overview_page() -> None:
             ]
             st.html(readout_table(table_rows, ("Teď", "Nejvýhodněji")))
             st.caption("Nákup = koncová cena s DPH, poplatky a distribucí NT/VT. "
-                       "Prodej = spot bez DPH − 499 Kč/MWh Electree (distribuce se u prodeje "
-                       "neplatí). Nejvýhodněji = nejlevnější nákup a nejvyšší prodej.")
+                       ("Prodej = spot bez DPH, bez poplatku. " if SELL_FEE == 0 else
+                        f"Prodej = spot bez DPH − poplatek {SUPPLIER}. ")
+                       + "Distribuce se u prodeje neplatí. Nejvýhodněji = nejlevnější nákup a nejvyšší prodej.")
 
     show_sell_card(now, prices, tomorrow_prices, current, height=240)
 
@@ -852,7 +854,7 @@ def show_final_price_card(
     with card("Ceny elektřiny", "Koncová cena s DPH a distribucí", icon="coins",
               tone="readout", aside=pill(period, "muted")):
         if current is not None:
-            low = is_low_tariff(now.hour)
+            low = is_low_tariff(now.hour, now.minute)
             total = total_price_kwh(czk_mwh_to_kwh(current.price_czk), low)
             badge = price_color(total, *totals.quantile([0.10, 0.30, 0.70, 0.90]))
             tariff = pill("NT", "battery") if low else pill("VT", "grid")
@@ -874,8 +876,8 @@ def show_sell_card(
     now: datetime, prices: list[SpotPrice], tomorrow_prices: list[SpotPrice],
     current: SpotPrice | None, height: int = 280,
 ) -> None:
-    """Karta „Prodej": za kolik teď prodávám do sítě (spot bez DPH − poplatek Electree)."""
-    from ote.tariff import SELL_FEE, czk_mwh_to_kwh, sell_price_kwh
+    """Karta „Prodej": za kolik teď prodávám do sítě (spot bez DPH − poplatek dodavatele)."""
+    from ote.tariff import czk_mwh_to_kwh, sell_price_kwh
 
     days = [(now.date(), prices)]
     if tomorrow_prices:
@@ -894,7 +896,8 @@ def show_sell_card(
     negative = int((sells < 0).sum())
 
     period = "Dnes a zítra" if tomorrow_prices else "Dnes"
-    with card("Prodej", f"Výkup do sítě · spot bez DPH − {SELL_FEE * 1000:.0f} Kč/MWh Electree",
+    with card("Prodej", "Výkup do sítě · spot bez DPH" + (
+                  f" − {SELL_FEE * 1000:.0f} Kč/MWh {SUPPLIER}" if SELL_FEE else ", bez poplatku"),
               icon="sun", tone="battery", aside=pill(period, "muted")):
         if current is not None:
             spot = czk_mwh_to_kwh(current.price_czk)
@@ -904,7 +907,8 @@ def show_sell_card(
             badge = GRID if sell < 0 else BATTERY if sell >= q70 else SOLAR if sell >= q30 \
                 else READOUT
             note = ("teď se prodávat nevyplatí – za dodávku do sítě se platí" if sell < 0
-                    else f"spot {spot:.2f} − poplatek {SELL_FEE:.3f} Kč/kWh")
+                    else f"spot {spot:.2f} − poplatek {SELL_FEE:.3f} Kč/kWh" if SELL_FEE
+                    else "spot bez DPH, bez poplatku")
             st.html(
                 f"<div style='margin-top:6px;color:{INK_MUTED};font-size:14px'>Teď prodávám za"
                 f"</div><div style='display:inline-block;margin:6px 0;padding:2px 18px;"
@@ -927,8 +931,9 @@ def show_sell_card(
                      alt.Tooltip("Spot (Kč/kWh):Q", title="Spot bez DPH", format=",.2f")],
             now=now, y_format=",.1f", height=height, stops=SELL_STOPS,
         ))
-        st.caption(f"Nejlépe se prodává {best['Čas']}. Poplatek Electree za služby obchodu "
-                   f"{SELL_FEE * 1000:.0f} Kč/MWh s DPH se odečítá od spotu bez DPH.")
+        st.caption(f"Nejlépe se prodává {best['Čas']}. " + (
+            f"Poplatek {SUPPLIER} za výkup {SELL_FEE * 1000:.0f} Kč/MWh se odečítá od spotu "
+            "bez DPH." if SELL_FEE else "Výkupní cena = spot bez DPH, bez poplatku."))
 
 
 def show_my_price_tab() -> None:
@@ -937,6 +942,10 @@ def show_my_price_tab() -> None:
         DISTRIBUTION_VT,
         ELECTREE_FEE,
         ENERGY_TAX,
+        FIXED_NT,
+        FIXED_VT,
+        LOW_TARIFF_PERIODS,
+        MONTHLY_FEE,
         SYSTEM_SERVICES,
         czk_mwh_to_kwh,
         high_tariff_price,
@@ -978,7 +987,7 @@ def show_my_price_tab() -> None:
         if current else None
     )
     spot = czk_mwh_to_kwh(current.price_czk) if current else None
-    low = is_low_tariff(now.hour)
+    low = is_low_tariff(now.hour, now.minute)
     total = None
     if spot is not None:
         total = low_tariff_price(spot) if low else high_tariff_price(spot)
@@ -1033,18 +1042,21 @@ def show_my_price_tab() -> None:
     with st.expander("Jak se cena počítá"):
         st.markdown(
             f"""
-            **Celkem = spot × 1,21 (DPH) + poplatek Electree + distribuce + systémové služby
+            **Celkem = spot × 1,21 (DPH) + poplatek {SUPPLIER} + distribuce + systémové služby
             + daň z elektřiny**
 
             | Složka | Kč/kWh |
             |--------|-------:|
-            | Poplatek Electree (odběr ze spotu) | {ELECTREE_FEE:.4f} |
-            | Distribuce VT (D25d, ČEZ 2026) | {DISTRIBUTION_VT:.5f} |
-            | Distribuce NT (D25d, ČEZ 2026) | {DISTRIBUTION_NT:.5f} |
+            | Poplatek {SUPPLIER} (odběr ze spotu) | {ELECTREE_FEE:.4f} |
+            | Distribuce VT ({DISTRIBUTOR}, 2026) | {DISTRIBUTION_VT:.5f} |
+            | Distribuce NT ({DISTRIBUTOR}, 2026) | {DISTRIBUTION_NT:.5f} |
             | Systémové služby | {SYSTEM_SERVICES:.5f} |
             | Daň z elektřiny | {ENERGY_TAX:.5f} |
+            | **Pevná část celkem VT** | **{FIXED_VT:.5f}** |
+            | **Pevná část celkem NT** | **{FIXED_NT:.5f}** |
 
-            Nízký tarif: 00:00–06:00 a 19:00–21:00, jinak vysoký tarif.
+            Nízký tarif: {', '.join(f'{a}–{b}' for a, b in LOW_TARIFF_PERIODS)}, jinak vysoký tarif.
+            K tomu stálý měsíční plat {MONTHLY_FEE:,.0f} Kč (v cenách za kWh není).
             """
         )
 
@@ -1580,7 +1592,7 @@ def show_profiles_tab() -> None:
 
         best = profiles[0]
         with card("Kdy je spotřeba nejlevnější", "Průměr za posledních 30 dní podle mého tarifu "
-                  "(Electree + ČEZ D25d)", icon="home", tone="home",
+                  f"({SUPPLIER} + {DISTRIBUTOR})", icon="home", tone="home",
                   aside=pill(f"nejlevněji: {best.name}", "battery")):
             st.html(status_box(
                 "Nejlevnější je spotřeba", best.description,
@@ -1589,7 +1601,7 @@ def show_profiles_tab() -> None:
             ))
             show_chart(chart)
             st.caption(
-                "Koncová cena = spot × 1,21 (DPH) + poplatky Electree + systémové služby + daň + "
+                f"Koncová cena = spot × 1,21 (DPH) + poplatky {SUPPLIER} + systémové služby + daň + "
                 "distribuce podle NT/VT v dané hodině. Oranžová čára = **rovnoměrná spotřeba**: "
                 "stejné množství v každé čtvrthodině dne (dřív tu bylo označení „flat tarif“). "
                 f"Samotný spot bez DPH byl v průměru {flat_spot:.2f} Kč/kWh."
@@ -2110,7 +2122,7 @@ def show_three_hour_weather_card() -> None:
             f"{''.join(cells)}</div>"
         )
 
-    with card("Počasí", "Předpověď po 3 hodinách na dnes a zítra · Kravaře", icon="cloud",
+    with card("Počasí", f"Předpověď po 3 hodinách na dnes a zítra · {LOCATION_NAME}", icon="cloud",
               tone="solar", accent_top="solar"):
         st.html(f"""{WEATHER_CSS}
         <div class='w3-scroll'><div class='w3-grid'>
@@ -2164,7 +2176,7 @@ def show_weather_tab() -> None:
                     f"{pill(text, tone)}</div>"
                 )
 
-            with card("Předpověď na 7 dní", "Kravaře · průměr dne a odhad vlivu na ceny",
+            with card("Předpověď na 7 dní", f"{LOCATION_NAME} · průměr dne a odhad vlivu na ceny",
                       icon="cloud_sun", tone="accent"):
                 st.html(f"{WEATHER_CSS}<div class='w7'>{''.join(tiles)}</div>")
 

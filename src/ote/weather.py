@@ -12,8 +12,8 @@ import httpx
 # https://open-meteo.com/
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
-# Souřadnice pro předpověď počasí (Kravaře u Opavy – domov v Home Assistantu)
-CZECH_COORDS = {"latitude": 49.94, "longitude": 18.00}
+# Souřadnice pro předpověď počasí – nastavují se v tariff.py (LOCATION_COORDS)
+from ote.tariff import LOCATION_COORDS as CZECH_COORDS  # noqa: E402
 
 
 @dataclass

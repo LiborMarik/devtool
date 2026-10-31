@@ -42,7 +42,7 @@ CONSUMPTION_PROFILES: dict[str, ProfileDefinition] = {
         weekend_only=True,
     ),
     "nízký tarif": ProfileDefinition(
-        hours=[0, 1, 2, 3, 4, 5, 19, 20], desc="Jen v mém nízkém tarifu (0-6h a 19-21h)"
+        hours=[4, 5, 6, 7, 15, 16, 17, 18], desc="Jen v mém nízkém tarifu (4-8h a 15-19h)"
     ),
 }
 
@@ -754,7 +754,7 @@ def analyze_consumption_profile(
         return p.time_from.hour in hours
 
     def total(p: SpotPrice) -> float:
-        return total_price_kwh(czk_mwh_to_kwh(p.price_czk), is_low_tariff(p.time_from.hour))
+        return total_price_kwh(czk_mwh_to_kwh(p.price_czk), is_low_tariff(p.time_from.hour, p.time_from.minute))
 
     # Filtruj ceny pro hodiny profilu
     selected = [p for p in prices if in_profile(p)]

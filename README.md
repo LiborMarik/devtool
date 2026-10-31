@@ -62,9 +62,9 @@ ote dashboard -p 8080 # vlastní port
 - Porovnání posledních dnů
 
 ### Moje cena
-- Koncová cena podle mého tarifu (Electree spot + distribuce ČEZ D25d 2026), převzato z Home Assistantu
+- Koncová cena podle mého tarifu (spot + distribuce EG.D D26d 2026), nastavení v `src/ote/tariff.py`
 - Aktuální spot, cena v nízkém a vysokém tarifu, průměr spotu dnes / zítra
-- Grafy: spot během dne, spot zítra, celková cena podle tarifu (NT 0–6 a 19–21 h)
+- Grafy: spot během dne, spot zítra, celková cena podle tarifu (NT 4–8 a 15–19 h, nastavení v `tariff.py`)
 - Výpočet v `src/ote/tariff.py`
 
 ### Vývoj cen
@@ -93,7 +93,7 @@ ote dashboard -p 8080 # vlastní port
 - Predikce špiček pro následující den
 
 ### Počasí a ceny
-- Předpověď počasí (Kravaře u Opavy)
+- Předpověď počasí (Mirovice)
 - Korelace počasí a cen elektřiny (teplota, oblačnost, vítr, sluneční záření)
 - Predikce cen s vlivem počasí
 
